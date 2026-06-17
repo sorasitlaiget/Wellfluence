@@ -11,227 +11,284 @@ enum UserRole {
   ADMIN
   BRAND
   INFLUENCER
+  FOLLOWER
 }
 
 enum CampaignStatus {
   DRAFT
-  PENDING_REVIEW
+  PENDING_APPROVAL
   ACTIVE
   COMPLETED
   CANCELLED
 }
 
-enum ApplicationStatus {
-  APPLIED
-  ACCEPTED
-  REJECTED
-  WITHDRAWN
+enum ContentType {
+  IMAGE
+  VIDEO
+  STORY
+  REEL
+  ARTICLE
+  REVIEW
 }
 
 enum ContentSubmissionStatus {
-  DRAFT
-  PENDING_REVIEW
+  PENDING
   APPROVED
   REJECTED
+  PUBLISHED
+}
+
+enum TransactionType {
+  CAMPAIGN_PAYMENT // Brand paying for campaign
+  INFLUENCER_PAYOUT // Wellfluence paying influencer
+  PLATFORM_COMMISSION
+  BRAND_TOPUP
+  SUBSCRIPTION
+  AFFILIATE_REVENUE
 }
 
 enum SocialPlatform {
   INSTAGRAM
+  FACEBOOK
   TIKTOK
   YOUTUBE
-  FACEBOOK
-  OTHER
-}
-
-enum TransactionType {
-  CAMPAIGN_PAYMENT_IN // Brand pays platform
-  INFLUENCER_PAYOUT   // Platform pays influencer
-  PLATFORM_COMMISSION // Commission taken by platform
-}
-
-enum TransactionStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  REFUNDED
 }
 
 model User {
-  id              String         @id @default(uuid())
-  email           String         @unique
-  password        String
-  role            UserRole
-  isEmailVerified Boolean        @default(false)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id             String      @id @default(uuid())
+  email          String      @unique
+  passwordHash   String
+  role           UserRole
+  isActive       Boolean     @default(true)
+  twoFactorEnabled Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
-  brandProfile      BrandProfile?
-  influencerProfile InfluencerProfile?
-
-  @@index([email])
-  @@index([role])
+  brand          Brand?
+  influencer     Influencer?
+  follower       Follower?
+  transactions   Transaction[]
 }
 
-model BrandProfile {
-  id             String    @id @default(uuid())
-  userId         String    @unique
-  companyName    String
-  description    String?
-  industry       String?
-  logoUrl        String?
-  website        String?
-  contactEmail   String?
-  targetAudience Json?     // JSONB equivalent in Prisma for flexible data
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+model Brand {
+  userId        String      @id @unique
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  logoUrl       String?
+  companyInfo   String?
+  contactInfo   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  campaigns Campaign[]
-
-  @@index([userId])
-  @@index([companyName])
-}
-
-model InfluencerProfile {
-  id              String        @id @default(uuid())
-  userId          String        @unique
-  bio             String?
-  profilePictureUrl String?
-  portfolioUrl    String?
-  rateCardUrl     String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  niches               Niche[]               @relation("InfluencerNiches")
-  socialAccounts       SocialAccount[]
-  campaignApplications CampaignApplication[]
-  availability         Json?                 // For AvailabilityCalendar for now, e.g., { "monday": ["9-12", "14-17"] }
-  followerCount        Int?
-  engagementRate       Float?                // Typically a percentage, e.g., 2.5 for 2.5%
-  demographics         Json?                 // For demographics, e.g., { "ageGroup": "18-24", "gender": "female", "location": "Bangkok" }
-
-  @@index([userId])
-  @@index([followerCount])
-  @@index([engagementRate])
-}
-
-model Niche {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  influencers InfluencerProfile[] @relation("InfluencerNiches")
-  campaigns   Campaign[]          @relation("CampaignNiches")
+  campaigns     Campaign[]
 
   @@index([name])
 }
 
-model SocialAccount {
-  id                  String         @id @default(uuid())
-  influencerProfileId String
-  platform            SocialPlatform
-  platformId          String         @unique // e.g., Instagram user ID, unique per platform
-  profileUrl          String?
-  accessToken         String?        // Stored encrypted in a real app, placeholder for Sprint 1
-  refreshToken        String?        // Stored encrypted, placeholder for Sprint 1
-  followersCount      Int?
-  engagementRate      Float?
-  lastSyncedAt        DateTime?
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
+model Influencer {
+  userId             String               @id @unique
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio                String?              @db.VarChar(500)
+  profilePictureUrl  String?
+  expertise          String[]             @default([]) // e.g., ["Fitness", "Skincare", "Nutrition"]
+  contentTypes       ContentType[]        @default([]) // e.g., [VIDEO, STORY]
+  followerCount      Int                  @default(0)
+  engagementRate     Float                @default(0) // Percentage 0-100
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
-  influencerProfile InfluencerProfile @relation(fields: [influencerProfileId], references: [id], onDelete: Cascade)
+  socialMediaAccounts SocialMediaAccount[]
+  campaignOffers      CampaignOffer[]
+  contentSubmissions  ContentSubmission[]
+  wallet              Wallet?
 
-  @@index([influencerProfileId])
-  @@index([platform])
-  @@index([platformId])
+  @@index([followerCount])
+  @@index([engagementRate])
+  @@index([expertise(ops: GinArrayOps)]) // For array search
+  @@index([contentTypes(ops: GinArrayOps)]) // For array search
+}
+
+model Follower {
+  userId    String   @id @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  followedInfluencers InfluencerFollow[]
+  reviews             Review[]
+  savedContent        SavedContent[]
+  notifications       Notification[]
+}
+
+model InfluencerFollow {
+  followerId    String
+  influencerId  String
+  followedAt    DateTime @default(now())
+
+  follower      Follower   @relation(fields: [followerId], references: [userId], onDelete: Cascade)
+  influencer    Influencer @relation(fields: [influencerId], references: [userId], onDelete: Cascade)
+
+  @@id([followerId, influencerId])
 }
 
 model Campaign {
-  id             String        @id @default(uuid())
-  brandProfileId String
-  title          String
-  description    String?
-  objective      String?
-  budget         Float
-  startDate      DateTime
-  endDate        DateTime
-  status         CampaignStatus @default(DRAFT)
-  deliverables   Json?         // e.g., [{ "type": "post", "count": 1, "platform": "INSTAGRAM" }]
-  targetFollowerCountMin Int?
-  targetFollowerCountMax Int?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id               String            @id @default(uuid())
+  brandId          String
+  brand            Brand             @relation(fields: [brandId], references: [userId], onDelete: Cascade)
+  title            String
+  description      String
+  objectives       String[]
+  budget           Float
+  targetAudience   String[]
+  contentTypesNeeded ContentType[]     @default([])
+  kpis             String[]          @default([])
+  startDate        DateTime
+  endDate          DateTime
+  status           CampaignStatus    @default(DRAFT)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
-  brandProfile BrandProfile @relation(fields: [brandProfileId], references: [id], onDelete: Cascade)
-  niches       Niche[]      @relation("CampaignNiches")
-  applications CampaignApplication[]
-  transactions Transaction[]
+  campaignOffers   CampaignOffer[]
+  contentSubmissions ContentSubmission[]
+  transactions     Transaction[]
 
-  @@index([brandProfileId])
+  @@index([brandId])
   @@index([status])
   @@index([startDate])
   @@index([endDate])
 }
 
-model CampaignApplication {
-  id                   String                  @id @default(uuid())
-  campaignId           String
-  influencerProfileId  String
-  status               ApplicationStatus       @default(APPLIED)
-  proposedRate         Float?                  // Rate proposed by influencer for this specific campaign
-  message              String?                 // Cover letter/message from influencer
-  createdAt            DateTime                @default(now())
-  updatedAt            DateTime                @updatedAt
+model CampaignOffer {
+  id             String            @id @default(uuid())
+  campaignId     String
+  influencerId   String
+  campaign       Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  influencer     Influencer        @relation(fields: [influencerId], references: [userId], onDelete: Cascade)
+  status         CampaignStatus    @default(PENDING_APPROVAL) // Can be OFFERED, ACCEPTED, REJECTED
+  offeredBudget  Float?            // Specific budget for this influencer
+  message        String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
-  campaign            Campaign              @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  influencerProfile   InfluencerProfile     @relation(fields: [influencerProfileId], references: [id], onDelete: Cascade)
-  contentSubmissions  ContentSubmission[]
-  transactions        Transaction[]
-
-  @@unique([campaignId, influencerProfileId]) // An influencer can only apply once per campaign
-  @@index([campaignId])
-  @@index([influencerProfileId])
+  @@unique([campaignId, influencerId])
+  @@index([influencerId])
   @@index([status])
 }
 
+
 model ContentSubmission {
-  id                     String                    @id @default(uuid())
-  campaignApplicationId  String
-  contentUrl             String                    // URL to the submitted content (e.g., S3 URL)
-  status                 ContentSubmissionStatus   @default(DRAFT)
-  feedback               String?
-  submittedAt            DateTime                  @default(now())
-  approvedAt             DateTime?
-  createdAt              DateTime                  @default(now())
-  updatedAt              DateTime                  @updatedAt
+  id             String                @id @default(uuid())
+  campaignId     String
+  influencerId   String
+  campaign       Campaign              @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  influencer     Influencer            @relation(fields: [influencerId], references: [userId], onDelete: Cascade)
+  contentUrl     String                // URL to the content (image, video, etc.)
+  caption        String?
+  status         ContentSubmissionStatus @default(PENDING)
+  feedback       String?               // Brand's feedback if rejected
+  submittedAt    DateTime              @default(now())
+  approvedAt     DateTime?
+  publishedAt    DateTime?             // When content was actually published by influencer
+  proofUrl       String?               // URL to live post or screenshot for verification
+  reach          Int?
+  engagement     Int?
 
-  campaignApplication CampaignApplication @relation(fields: [campaignApplicationId], references: [id], onDelete: Cascade)
-
-  @@index([campaignApplicationId])
+  @@unique([campaignId, influencerId])
+  @@index([influencerId])
   @@index([status])
+}
+
+model Wallet {
+  id             String       @id @default(uuid())
+  influencerId   String       @unique
+  influencer     Influencer   @relation(fields: [influencerId], references: [userId], onDelete: Cascade)
+  balance        Float        @default(0)
+  currency       String       @default("THB") // Assuming default currency is THB for now
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  transactions   Transaction[]
 }
 
 model Transaction {
-  id                     String            @id @default(uuid())
-  campaignId             String?           // For overall campaign payments (e.g., brand to platform)
-  campaignApplicationId  String?           // For influencer specific payouts
-  type                   TransactionType
-  amount                 Float
-  currency               String            @default("THB") // Assuming THB as per PRD locale
-  status                 TransactionStatus @default(PENDING)
-  platformCommissionAmount Float?          // Amount platform takes as commission
-  paymentGatewayRef      String?           // Reference ID from Omise/Stripe for external transaction
-  createdAt              DateTime          @default(now())
-  updatedAt              DateTime          @updatedAt
+  id             String          @id @default(uuid())
+  userId         String?         // User (Brand/Influencer) initiating/receiving transaction
+  user           User?           @relation(fields: [userId], references: [id])
+  walletId       String?         // Wallet involved (e.g., influencer's wallet for payout)
+  wallet         Wallet?         @relation(fields: [walletId], references: [id])
+  campaignId     String?
+  campaign       Campaign?       @relation(fields: [campaignId], references: [id])
+  amount         Float
+  currency       String          @default("THB")
+  type           TransactionType
+  status         String          @default("COMPLETED") // PENDING, COMPLETED, FAILED
+  description    String?
+  paymentGatewayRef String?      // Reference from Stripe/Omise
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  campaign            Campaign?           @relation(fields: [campaignId], references: [id])
-  campaignApplication CampaignApplication? @relation(fields: [campaignApplicationId], references: [id])
-
+  @@index([userId])
+  @@index([walletId])
   @@index([campaignId])
-  @@index([campaignApplicationId])
   @@index([type])
   @@index([status])
+}
+
+model SocialMediaAccount {
+  id              String         @id @default(uuid())
+  influencerId    String
+  influencer      Influencer     @relation(fields: [influencerId], references: [userId], onDelete: Cascade)
+  platform        SocialPlatform
+  profileId       String?        // ID from social media platform (e.g., Instagram user ID)
+  username        String?
+  accessToken     String         @db.Text
+  refreshToken    String?        @db.Text
+  lastSyncedAt    DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([influencerId, platform])
+  @@index([platform])
+}
+
+model Review {
+  id          String   @id @default(uuid())
+  followerId  String
+  campaignId  String?  // Optional: link review to a specific campaign
+  influencerId String? // Optional: link review to an influencer directly
+  follower    Follower @relation(fields: [followerId], references: [userId], onDelete: Cascade)
+  rating      Int      @min(1) @max(5)
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([followerId])
+  @@index([campaignId])
+  @@index([influencerId])
+}
+
+model SavedContent {
+  id          String   @id @default(uuid())
+  followerId  String
+  follower    Follower @relation(fields: [followerId], references: [userId], onDelete: Cascade)
+  contentUrl  String   // URL of the content saved
+  description String?
+  savedAt     DateTime @default(now())
+
+  @@index([followerId])
+}
+
+model Notification {
+  id          String      @id @default(uuid())
+  recipientId String      // User ID of the recipient (Brand, Influencer, Follower)
+  recipient   User        @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  message     String
+  type        String      // e.g., "CAMPAIGN_OFFER", "CONTENT_APPROVED", "PROMOTION"
+  isRead      Boolean     @default(false)
+  sentAt      DateTime    @default(now())
+  link        String?     // Optional link to related resource
+
+  @@index([recipientId])
+  @@index([isRead])
+  @@index([sentAt])
 }
