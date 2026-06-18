@@ -1,203 +1,164 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { prisma } from '../lib/prisma';
-import { authMiddleware, influencerAuthMiddleware, adminAuthMiddleware } from '../middleware/auth.middleware';
+import prisma from '../lib/prisma';
+import { authMiddleware, authorizeRole } from '../middleware/auth.middleware';
+import { UserRole } from '@prisma/client';
+import { HTTPException } from 'hono/http-exception';
 
-const influencerRoute = new Hono();
+export const influencerRouter = new Hono();
 
-const createInfluencerProfileSchema = z.object({
-  userId: z.string().uuid('Invalid user ID format'),
-  bio: z.string().max(500).optional(),
-  niche: z.string().max(100).optional(),
-  contentPillars: z.string().array().optional(),
-  baseRate: z.number().positive().optional(),
-  mediaKitUrl: z.string().url().optional().nullable(),
-  // Audience demographics will be more complex, keeping it simple for v1
+const influencerProfileSchema = z.object({
+  bio: z.string().min(10, 'Bio must be at least 10 characters long.').max(500, 'Bio cannot exceed 500 characters.'),
+  niche: z.array(z.string()).min(1, 'At least one niche is required.'),
+  audienceDemographics: z.object({
+    ageRange: z.string().optional(),
+    gender: z.string().optional(),
+    location: z.string().optional(),
+  }).optional(),
+  mediaKitUrl: z.string().url('Invalid URL format.').optional().nullable(),
+  socialMediaLinks: z.array(z.object({
+    platform: z.enum(['INSTAGRAM', 'TIKTOK', 'YOUTUBE']),
+    username: z.string().min(1),
+    profileUrl: z.string().url().optional(),
+    isVerified: z.boolean().default(false),
+  })).optional(),
+  followerCount: z.number().int().min(0).optional(),
+  engagementRate: z.number().min(0).max(100).optional(),
 });
 
-const updateInfluencerProfileSchema = z.object({
-  bio: z.string().max(500).optional(),
-  niche: z.string().max(100).optional(),
-  contentPillars: z.string().array().optional(),
-  baseRate: z.number().positive().optional(),
-  mediaKitUrl: z.string().url().optional().nullable(),
-  audienceDemographics: z.record(z.string(), z.any()).optional(), // Simple record for now
-  isVerified: z.boolean().optional(),
-});
-
-// GET /influencers - List all influencers
-influencerRoute.get('/', authMiddleware, async (c) => {
-  const { page = '1', limit = '10', niche, keyword } = c.req.query();
-  const pageNum = parseInt(page);
-  const limitNum = parseInt(limit);
-  const skip = (pageNum - 1) * limitNum;
-
-  const where: any = {};
-  if (niche) {
-    where.niche = { contains: niche, mode: 'insensitive' };
-  }
-  if (keyword) {
-    where.OR = [
-      { bio: { contains: keyword, mode: 'insensitive' } },
-      { niche: { contains: keyword, mode: 'insensitive' } },
-      { contentPillars: { has: keyword } }
-    ];
-  }
-
-  try {
-    const influencers = await prisma.influencerProfile.findMany({
-      where,
-      skip,
-      take: limitNum,
-      select: {
-        id: true,
-        bio: true,
-        niche: true,
-        contentPillars: true,
-        baseRate: true,
-        mediaKitUrl: true,
-        isVerified: true,
-        user: {
-          select: {
-            id: true,
-            email: true,
-          }
+// GET all influencer profiles (for Brands/Admins to discover)
+influencerRouter.get('/', authMiddleware, authorizeRole([UserRole.BRAND, UserRole.ADMIN]), async (c) => {
+  const influencers = await prisma.influencerProfile.findMany({
+    include: {
+      user: {
+        select: {
+          email: true,
         },
-        socialAccounts: {
-          select: {
-            platform: true,
-            username: true,
-            followerCount: true,
-            engagementRate: true
-          }
-        }
       },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    const totalInfluencers = await prisma.influencerProfile.count({ where });
-
-    return c.json({
-      data: influencers,
-      pagination: {
-        total: totalInfluencers,
-        page: pageNum,
-        limit: limitNum,
-        totalPages: Math.ceil(totalInfluencers / limitNum),
-      }
-    });
-  } catch (error: any) {
-    console.error('Error fetching influencers:', error);
-    return c.json({ error: 'Failed to fetch influencers', details: error.message }, 500);
-  }
+      socialMediaAccounts: true,
+    },
+  });
+  return c.json({ success: true, data: influencers });
 });
 
-// GET /influencers/:id - Get single influencer profile
-influencerRoute.get('/:id', authMiddleware, async (c) => {
-  const { id } = c.req.param();
+// GET a specific influencer profile by ID
+influencerRouter.get('/:id', authMiddleware, authorizeRole([UserRole.BRAND, UserRole.INFLUENCER, UserRole.ADMIN]), async (c) => {
+  const influencerId = c.req.param('id');
+  const userId = c.get('userId');
+  const userRole = c.get('userRole');
 
-  try {
-    const influencer = await prisma.influencerProfile.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        bio: true,
-        niche: true,
-        contentPillars: true,
-        baseRate: true,
-        mediaKitUrl: true,
-        isVerified: true,
-        audienceDemographics: true,
-        user: {
-          select: {
-            id: true,
-            email: true,
-            createdAt: true,
-          }
+  const influencer = await prisma.influencerProfile.findUnique({
+    where: { id: influencerId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          role: true,
         },
-        socialAccounts: {
-          select: {
-            platform: true,
-            username: true,
-            followerCount: true,
-            engagementRate: true,
-            lastSyncedAt: true
-          }
+      },
+      socialMediaAccounts: true,
+      _count: {
+        select: {
+          campaignProposals: true,
         },
-        collaborations: {
-          select: {
-            id: true,
-            status: true,
-            campaign: {
-              select: { title: true, brandProfile: { select: { name: true } } }
-            }
-          },
-          take: 5, // Show recent collaborations
-          orderBy: { createdAt: 'desc' }
-        }
-      }
-    });
+      },
+    },
+  });
 
-    if (!influencer) {
-      return c.json({ error: 'Influencer not found' }, 404);
-    }
-    return c.json(influencer);
-  } catch (error: any) {
-    console.error('Error fetching influencer:', error);
-    return c.json({ error: 'Failed to fetch influencer', details: error.message }, 500);
+  if (!influencer) {
+    throw new HTTPException(404, { message: 'Influencer profile not found.' });
   }
+
+  // If the user is an influencer, ensure they can only view their own profile unless they are an admin.
+  if (userRole === UserRole.INFLUENCER && influencer.userId !== userId) {
+    throw new HTTPException(403, { message: 'Forbidden: You can only view your own profile.' });
+  }
+
+  return c.json({ success: true, data: influencer });
 });
 
-// PUT /influencers/:id - Update influencer profile
-influencerRoute.put('/:id', influencerAuthMiddleware, zValidator('json', updateInfluencerProfileSchema), async (c) => {
-  const { id } = c.req.param();
-  const updateData = c.req.valid('json');
-  const jwtPayload = c.get('jwtPayload');
+// CREATE an influencer profile (only an INFLUENCER can create their own)
+influencerRouter.post('/', authMiddleware, authorizeRole(UserRole.INFLUENCER), zValidator('json', influencerProfileSchema), async (c) => {
+  const userId = c.get('userId');
+  const data = c.req.valid('json');
 
-  try {
-    const existingInfluencer = await prisma.influencerProfile.findUnique({
-      where: { id },
-      select: { userId: true }
-    });
-
-    if (!existingInfluencer) {
-      return c.json({ error: 'Influencer profile not found' }, 404);
-    }
-
-    if (existingInfluencer.userId !== jwtPayload.userId) {
-      return c.json({ error: 'Forbidden: You can only update your own profile' }, 403);
-    }
-
-    const updatedInfluencer = await prisma.influencerProfile.update({
-      where: { id },
-      data: updateData,
-    });
-    return c.json({ message: 'Influencer profile updated successfully', data: updatedInfluencer });
-  } catch (error: any) {
-    console.error('Error updating influencer profile:', error);
-    return c.json({ error: 'Failed to update influencer profile', details: error.message }, 500);
+  const existingProfile = await prisma.influencerProfile.findUnique({ where: { userId } });
+  if (existingProfile) {
+    throw new HTTPException(409, { message: 'An influencer profile already exists for this user.' });
   }
+
+  const newProfile = await prisma.influencerProfile.create({
+    data: {
+      ...data,
+      user: { connect: { id: userId } },
+      socialMediaAccounts: data.socialMediaLinks ? {
+        createMany: {
+          data: data.socialMediaLinks.map(link => ({
+            platform: link.platform,
+            username: link.username,
+            profileUrl: link.profileUrl,
+            isVerified: link.isVerified,
+          })),
+        },
+      } : undefined,
+    },
+    include: { socialMediaAccounts: true },
+  });
+
+  return c.json({ success: true, message: 'Influencer profile created.', data: newProfile }, 201);
 });
 
-// DELETE /influencers/:id - Delete influencer profile (Admin only)
-influencerRoute.delete('/:id', adminAuthMiddleware, async (c) => {
-  const { id } = c.req.param();
+// UPDATE an influencer profile (only the INFLUENCER can update their own, or ADMIN)
+influencerRouter.put('/:id', authMiddleware, authorizeRole([UserRole.INFLUENCER, UserRole.ADMIN]), zValidator('json', influencerProfileSchema.partial()), async (c) => {
+  const influencerId = c.req.param('id');
+  const userId = c.get('userId');
+  const userRole = c.get('userRole');
+  const data = c.req.valid('json');
 
-  try {
-    const existingInfluencer = await prisma.influencerProfile.findUnique({ where: { id } });
-    if (!existingInfluencer) {
-      return c.json({ error: 'Influencer profile not found' }, 404);
-    }
-
-    // Also delete the associated User to clean up fully
-    await prisma.user.delete({ where: { id: existingInfluencer.userId } });
-
-    return c.json({ message: 'Influencer profile and associated user deleted successfully' });
-  } catch (error: any) {
-    console.error('Error deleting influencer profile:', error);
-    return c.json({ error: 'Failed to delete influencer profile', details: error.message }, 500);
+  const existingProfile = await prisma.influencerProfile.findUnique({ where: { id: influencerId } });
+  if (!existingProfile) {
+    throw new HTTPException(404, { message: 'Influencer profile not found.' });
   }
+
+  if (userRole === UserRole.INFLUENCER && existingProfile.userId !== userId) {
+    throw new HTTPException(403, { message: 'Forbidden: You can only update your own profile.' });
+  }
+
+  const updatedProfile = await prisma.influencerProfile.update({
+    where: { id: influencerId },
+    data: {
+      ...data,
+      socialMediaAccounts: data.socialMediaLinks ? {
+        deleteMany: {}, // Clear existing social media accounts to re-create
+        createMany: {
+          data: data.socialMediaLinks.map(link => ({
+            platform: link.platform,
+            username: link.username,
+            profileUrl: link.profileUrl,
+            isVerified: link.isVerified,
+          })),
+        },
+      } : undefined,
+    },
+    include: { socialMediaAccounts: true },
+  });
+
+  return c.json({ success: true, message: 'Influencer profile updated.', data: updatedProfile });
 });
 
-export { influencerRoute };
+// DELETE an influencer profile (only ADMIN can delete)
+influencerRouter.delete('/:id', authMiddleware, authorizeRole(UserRole.ADMIN), async (c) => {
+  const influencerId = c.req.param('id');
+
+  const existingProfile = await prisma.influencerProfile.findUnique({ where: { id: influencerId } });
+  if (!existingProfile) {
+    throw new HTTPException(404, { message: 'Influencer profile not found.' });
+  }
+
+  await prisma.socialMediaAccount.deleteMany({ where: { influencerProfileId: influencerId } });
+  await prisma.influencerProfile.delete({ where: { id: influencerId } });
+
+  return c.json({ success: true, message: 'Influencer profile deleted.' });
+});
