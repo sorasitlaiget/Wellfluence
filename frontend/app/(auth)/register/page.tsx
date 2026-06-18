@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 
 type UserRole = 'BRAND' | 'INFLUENCER' | 'CUSTOMER';
 
-export default function RegisterPage() {
+function RegisterForm() {
   const searchParams = useSearchParams();
   const initialRole = searchParams.get('role') as UserRole || 'CUSTOMER';
 
@@ -35,15 +35,14 @@ export default function RegisterPage() {
       if (response.data.success) {
         localStorage.setItem('token', response.data.token);
         localStorage.setItem('userRole', response.data.user.role);
-        router.push('/'); // Redirect to dashboard or home after successful registration
+        router.push('/');
       }
     } catch (err: any) {
       if (err.response && err.response.data && err.response.data.message) {
         setError(err.response.data.message);
       } else if (err.response && err.response.data && err.response.data.errors) {
         setError(err.response.data.errors[0].message || 'Validation error.');
-      }
-      else {
+      } else {
         setError('An unexpected error occurred during registration.');
       }
     } finally {
@@ -68,9 +67,7 @@ export default function RegisterPage() {
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="rounded-md shadow-sm -space-y-px mb-4">
             <div>
-              <label htmlFor="email-address" className="sr-only">
-                Email address
-              </label>
+              <label htmlFor="email-address" className="sr-only">Email address</label>
               <input
                 id="email-address"
                 name="email"
@@ -84,9 +81,7 @@ export default function RegisterPage() {
               />
             </div>
             <div>
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
+              <label htmlFor="password" className="sr-only">Password</label>
               <input
                 id="password"
                 name="password"
@@ -100,9 +95,7 @@ export default function RegisterPage() {
               />
             </div>
             <div>
-              <label htmlFor="confirm-password" className="sr-only">
-                Confirm Password
-              </label>
+              <label htmlFor="confirm-password" className="sr-only">Confirm Password</label>
               <input
                 id="confirm-password"
                 name="confirm-password"
@@ -124,10 +117,9 @@ export default function RegisterPage() {
                 <label
                   key={r}
                   className={`flex items-center justify-center p-3 border rounded-md text-sm font-medium uppercase cursor-pointer transition-colors duration-200
-                    ${
-                      role === r
-                        ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
-                        : 'bg-white text-gray-900 border-gray-300 hover:bg-gray-50'
+                    ${role === r
+                      ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                      : 'bg-white text-gray-900 border-gray-300 hover:bg-gray-50'
                     }`}
                 >
                   <input
@@ -172,5 +164,13 @@ export default function RegisterPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <RegisterForm />
+    </Suspense>
   );
 }
