@@ -5,20 +5,20 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Wellfluence - Health & Beauty Influencer Marketing Platform',
-  description: 'The premier B2B2C influencer marketing platform connecting health and wellness brands with influential individuals and their followers.',
-  keywords: ['Wellfluence', 'influencer marketing', 'health influencer', 'beauty influencer', 'wellness marketing', 'B2B2C', 'health tech'],
+  title: 'Wellfluence - Health & Wellness Influencer Marketing Platform',
+  description: 'Wellfluence is the premier hub connecting health and wellness brands with credible and influential content creators.',
+  keywords: ['health', 'wellness', 'influencer marketing', 'brand', 'influencer', 'fitness', 'nutrition', 'mental health', 'beauty'],
   openGraph: {
-    title: 'Wellfluence - Health & Beauty Influencer Marketing Platform',
-    description: 'The premier B2B2C influencer marketing platform connecting health and wellness brands with influential individuals and their followers.',
-    url: 'https://wellfluence.com', // Replace with actual domain
+    title: 'Wellfluence - Health & Wellness Influencer Marketing Platform',
+    description: 'Wellfluence is the premier hub connecting health and wellness brands with credible and influential content creators.',
+    url: 'https://www.wellfluence.com', // Replace with actual domain
     siteName: 'Wellfluence',
     images: [
       {
-        url: 'https://via.placeholder.com/1200x630?text=Wellfluence+OG', // Replace with actual OG image
+        url: 'https://via.placeholder.com/1200x630/22c55e/ffffff?text=Wellfluence', // Placeholder for OG image
         width: 1200,
         height: 630,
-        alt: 'Wellfluence - Connecting Health & Beauty',
+        alt: 'Wellfluence - Health & Wellness Influencer Marketing Platform',
       },
     ],
     locale: 'en_US',
@@ -26,23 +26,11 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Wellfluence - Health & Beauty Influencer Marketing Platform',
-    description: 'The premier B2B2C influencer marketing platform connecting health and wellness brands with influential individuals and their followers.',
-    images: ['https://via.placeholder.com/1200x675?text=Wellfluence+Twitter'], // Replace with actual Twitter image
+    title: 'Wellfluence - Health & Wellness Influencer Marketing Platform',
+    description: 'Wellfluence is the premier hub connecting health and wellness brands with credible and influential content creators.',
+    creator: '@wellfluence', // Replace with actual Twitter handle
+    images: ['https://via.placeholder.com/1200x675/22c55e/ffffff?text=Wellfluence'], // Placeholder for Twitter image
   },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-    },
-  },
-  creator: 'Wellfluence Team',
-  publisher: 'Wellfluence Team',
 };
 
 export default function RootLayout({
