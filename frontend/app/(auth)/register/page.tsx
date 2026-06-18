@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 
+export const dynamic = 'force-dynamic';
+
 type UserRole = 'BRAND' | 'INFLUENCER' | 'CUSTOMER';
 
 function RegisterForm() {
