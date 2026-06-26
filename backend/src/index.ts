@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { HTTPException } from 'hono/http-exception';
 import { ZodError } from 'zod';
-import { serve } from '@hono/node-server'; // 1. เพิ่มตัวเสิร์ฟสำหรับ Node.js ของ Hono
+import { serve } from '@hono/node-server'; 
 import 'dotenv/config';
 
 import { authRouter } from './routes/auth.route';
@@ -13,8 +13,15 @@ const app = new Hono();
 
 // Middleware
 app.use(logger());
+
+// แก้ไขตรงนี้: เปิดใจรับทุก Domain ที่มาจาก Vercel และ Localhost
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin) => {
+    if (!origin || origin.includes('localhost') || origin.includes('vercel.app')) {
+      return origin;
+    }
+    return process.env.FRONTEND_URL || 'http://localhost:3000';
+  },
   allowHeaders: ['Content-Type', 'Authorization'],
   allowMethods: ['POST', 'GET', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
@@ -43,11 +50,9 @@ app.onError((err, c) => {
   return c.json({ success: false, message: 'An unexpected error occurred.' }, 500);
 });
 
-// 2. ดึงค่าพอร์ตที่ Railway กำหนดมาให้แบบ Dynamic
 const port = Number(process.env.PORT) || 8000;
 console.log(`Server is running on port ${port}`);
 
-// 3. สั่งให้ Node.js บูตตัวแอปพลิเคชันขึ้นมาทำงานบนพอร์ตนั้นๆ
 serve({
   fetch: app.fetch,
   port: port
